@@ -41,7 +41,7 @@ def ReadFile(file, path_or):
         if l:
             ll.append(l) ;  ll2.append(l2); ll3.append(l3)
         else:
-            ll.append(0) ;  ll2.append(0) ;   ll3.append(0)
+            ll.append(['0']) ;  ll2.append([0]) ;   ll3.append([0])
     df1.bib_number = ll ;    df1.bib_conf = ll2;     df1.dorsal_conf = ll3
 
     time = []
@@ -83,7 +83,7 @@ def FindMatch(path, file, lista, conf_list,distance):
 
         if file.split('_add_')[0] != file2.split('_add_')[0]:
             if conf[0] < 0.80:
-                results = DeepFace.verify(os.path.join(path, file + '.jpg'), os.path.join(path, file2 + '.jpg'),
+                results = DeepFace.verify(os.path.join(path, file + '.jpg'), os.path.join(path, file2 + '.jpg'), model_name='Facenet512',
                                           detector_backend='retinaface', enforce_detection=False)
                 # results2 = DeepFace.verify(os.path.join(path,file),os.path.join(path,file2),model_name = models[8], detector_backend='retinaface',enforce_detection= False)
                 if results["distance"] < distance:
@@ -117,7 +117,8 @@ def PersonToImage(df1s, faces='True'):
             else:
                 lst_ind.append(1)
             for b, c, d in zip(bibs, confs_bib, confs):
-                if b != 0:
+                if b[0] != '0':
+                    print('Appending',b)
                     if isinstance(b,list):
                         lb = lb + b
                         cb = cb + c
@@ -141,7 +142,7 @@ def PersonToImage(df1s, faces='True'):
 
         return df
 
-def RelatesFacesToImages(csvfile, path_crops, path_or, distance = 0.15):
+def RelatesFacesToImages(csvfile, path_crops, path_or, distance):
     """ adds dorsal to non confident detections if face recognition
     can be done
     csv file: file with OCR outputs
@@ -161,17 +162,23 @@ def RelatesFacesToImages(csvfile, path_crops, path_or, distance = 0.15):
 
     # las de más de una cara debería quitarlas del df trabajar con un df sin ellas, para que no
     # las incluya en la lista.
-    df2 = df[df.bib_number.str.len() == 1]  # NUEVO
+    df2 = df[(df.bib_number.str.len() < 2)]  # ESTA MAL
+    #print(df2)
 
     for img, dorsal, conf, t in zip(df2.image, df2.bib_number, df2.bib_conf, df2.timestamp):
-
         if conf[0] >= 0.90:
             tmin = max(t - 10, min(df2.timestamp))
             tmax = min(t + 10, max(df2.timestamp))
             # print(lista)
             # si esta no se detecta no hace falta hacer o otro
-            lista = df2.image[(df2.timestamp > tmin) & (df2.timestamp < tmax)].tolist()
-            conf_list = df2.bib_conf[(df2.timestamp > tmin) & (df2.timestamp < tmax)].tolist()
+            time_cond = (df2.timestamp > tmin) & (df2.timestamp < tmax)
+            check_cond = ((df2.bib_conf.apply(lambda x: x[0] < 0.8)) | (df2.bib_number.str.startswith('0')))
+
+
+            lista = df2.image[time_cond & check_cond].tolist()
+            conf_list = df2.bib_conf[time_cond & check_cond].tolist()
+            dorsal_list = df2.bib_number[time_cond & check_cond].tolist()
+            print(img,lista, conf_list, tmin,tmax)
 
             # print(list1,lista_img)
             list_f, dist_f = FindMatch(path_crops, img, lista, conf_list, distance)
@@ -182,10 +189,9 @@ def RelatesFacesToImages(csvfile, path_crops, path_or, distance = 0.15):
                 for im,dist in zip(list_f,dist_f):
                     add_element(dict_dorsal, im, dorsal[0])
                    # add_element(dict_distance, im, dist)
-
     # we have a dict_dorsal with dorsals associated to images, then we will take the most common
     df3 = df.copy()
-
+    print(df3)
     # add pandas column of not changed
     df3["bib_number_exif"] = 'not changed'
 
@@ -195,15 +201,19 @@ def RelatesFacesToImages(csvfile, path_crops, path_or, distance = 0.15):
         # only dd if no identic to dorsal, para no añadir esos malos
         #dd = d[dist == max(dist)] probar esto
         dd = max(set(d), key=d.count)
+        print('HOLA',k,dd)
         if df3.bib_conf[df3.image == k].values[0][0] < 0.9:
             print('changing all')
             df3.bib_number_exif[df3.image == k] = 'changed'
             df3.indicator[df3.image == k] = 1
-            df3.bib_number[df3.image == k] = [dd]
-            df3.bib_conf[df3.image == k] = ['1.11']
-            df3.dorsal_conf[df3.image == k] = ['0.555']
+            row_index = df.loc[df3.image == k].index[0]
+           # Assign the new element as a list to the specified row and column
+            df3.at[row_index, 'bib_number'] = [dd]
+            df3.at[row_index, 'bib_conf'] = ['1.11']
+            #df3.bib_number[df3.image == k] = dd
+            df3.at[row_index, 'dorsal_conf'] = ['0.555']
 
-
+           # df3.dorsal_conf[df3.image == k] = ['0.555']
 
 
     new = len(dict_dorsal.keys())
@@ -215,7 +225,7 @@ def RelatesFacesToImages(csvfile, path_crops, path_or, distance = 0.15):
 
 #    df3.to_csv(csvfile.split('.')[0] + '_with_faces_person_faces_dist_015_all_proposals.csv')
     df_final = PersonToImage(df3)
-    df_final.to_csv(csvfile.split('.')[0] + '_with_faces_dist_015_int10.csv')
+    df_final.to_csv(csvfile.split('.')[0] + '_with_faces_dist_015_int10_test_check_cond2.csv')
     return df_final
 
 
@@ -296,13 +306,20 @@ def blurryImages(df, lista, path_or,path_out):
             if  img.split('_add_')[0]  in entry:
                 match = True
                 break
-            print(match)
+           # print(match)
         if match == False:
             print('Imagen no en la lista, guardando en blurry')
             source =os.path.join(path_or ,img)
             destination = os.path.join(path_aux,img)
             shutil.copy(source, destination)
 
+def removeFile(im, lista, path):
+
+    for l in lista:
+        if im in l:
+            source = path + l
+            print('removin source', source)
+            os.remove(source)
 
 def DistributePhotos(path, df,  path_out, thres_bib=0.8, write_text=False):
     """distributes fotos dentro de path segun
@@ -351,10 +368,45 @@ def DistributePhotos(path, df,  path_out, thres_bib=0.8, write_text=False):
             #    path_aux = path_out + '/not_confident/'
             #    moveFile(im, lista, path, path_aux, write_text = True, text = text, color = color)
                 path_aux = path_out + '/SIN_CLASIFICAR/'
-                moveFile(im, lista, path, path_aux, write_text = False, text = text, color= color)
+                moveFile(im, lista, path, path_aux, write_text = write_text, text = text, color= color)
     f.close()
     print('process completed')
 
+def DistributePhotosAfter(path, df,  path_out, thres_bib=0.8, write_text=False):
+    """Dsitrubites files in df in folders with bib neam if thres> thres_bib
+    after first classification"""
+
+    if not os.path.exists(path_out):
+        os.mkdir(path_out)
+    s_df = pd.read_csv(os.path.join(path_out, 'sin_clasificar.csv'), usecols=[0,1,2], names=['names','num','conf'],header=None)
+    lista = os.listdir(path)
+    # df.bib_number = df.bib_number.apply(literal_eval)
+    # df.bib_conf = df.bib_conf.apply(literal_eval)
+    for im, list_bib, conf in zip(df.image, df.bib_number, df.bib_conf):
+        print(im)
+        color = [];
+        text = []
+        # print(im, list_bib, conf)
+        for bib, c in zip(eval(list_bib), eval(conf)):
+            # print('iteration',im, bib, c)
+            print(bib)
+            if bib != 0:
+                text.append(str(bib) + ',' + str(c))
+                if c > thres_bib:
+                    path_aux = path_out + '/' + str(bib) + '/'
+                    color.append("black")
+
+                    moveFile(im, lista, path, path_aux)
+                else:
+                    color.append("red")
+        print(color)
+        print(not "red" in color)
+        if not "red" in color:
+            removeFile(im, lista, path)
+            s_df = s_df.drop(s_df[s_df.names==im].index)
+    s_df.to_csv(os.path.join(path_out, 'sin_clasificar.csv'), index =False)
+
+    print('process completed')
 
 def AddTextAllImage(path, file, thres_bib=0.8, path_out='.', write_text=False):
     if not os.path.exists(path_out):
@@ -380,7 +432,7 @@ def AddTextAllImage(path, file, thres_bib=0.8, path_out='.', write_text=False):
             else:
                 color.append("red")
             path_aux = path_out + '/all_images_text/'
-            moveFile(im, lista, path, path_aux, write_text=True, text=text, color=color)
+            moveFile(im, lista, path, path_aux, write_text=write_text, text=text, color=color)
 
 def JoinPreds(pred1, pred2, conf1, conf2, cdor1, cdor2):
     # print(pred1,pred2,conf1,conf2,cdor1,cdor2)
@@ -449,12 +501,13 @@ def AddTextCopy(source:str,destination:str, text:list, color:list):
 
 # Choose a font
 #font = ImageFont.truetype("Roboto-Regular.ttf", 50)
-    font = ImageFont.truetype("Avenir.ttc", size=72)
+    #font = ImageFont.truetype("Avenir.ttc", size=72)
 
 # Draw the text
     y = 100
     for t,col in zip(text,color):
-        draw.text((100, y), str(t), font = font,fill=col)
+        #draw.text((100, y), str(t), font = font,fill=col)
+        draw.text((100, y), str(t), fill=col)
         y += 100
 
 # Save the image

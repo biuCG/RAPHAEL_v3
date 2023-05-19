@@ -1,14 +1,14 @@
-import pytesseract
 import numpy as np
 import imutils
 import cv2
 import imgaug
 import keras_ocr
 import easyocr
+import os
 reader = easyocr.Reader(['es'])
 #import tensorflow as tf
 recognizer = keras_ocr.recognition.Recognizer()
-recognizer.model.load_weights('/home/web/RaphaelProject/RAPHAEL-master_v3/weights/SPIID_v6_test.h5')
+recognizer.model.load_weights(os.path.abspath('weights/SPIID_v6_test.h5'))
 recognizer.compile()
 
 def resize_image(img, size=(300,300)):
@@ -140,7 +140,7 @@ def recognize_numbers(crop, psm=7, vote='hard',weights_keras='RAPHAEL.h5'):
             text = list_num[0]
             conf = list_conf[0]
         elif len(list_num) == 1 and list_conf[0]<0.5:
-            text = 0
+            text = '0'
             conf = 0
         else:
            # print('lista mayora 1',len(list_num))
@@ -165,7 +165,7 @@ def recognize_numbers(crop, psm=7, vote='hard',weights_keras='RAPHAEL.h5'):
     elif list_num != [] and vote == 'soft':
         """ aquí pesando por probabilidades"""
     else:
-        text = 0
+        text = '0'
         conf = 0
 
         # VOTING METHOD? CONTAR CUANTAS VECES ME SALE UNO DE LOS NÚMEROS??
@@ -186,7 +186,7 @@ def d2text(d):
             text = ''.join([i for i in d[0][-2] if i.isdigit()])
             conf = d[0][-1]
         else: #mejro con exception
-            text = 0
+            text = '0'
             conf = 0
 
 
@@ -200,7 +200,7 @@ def d2text(d):
                  #text = item[-2]
                  conf = item[-1]
             else: # mejro con exception
-                text = 0
+                text = '0'
                 conf = 0
 
     return text, conf
