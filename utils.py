@@ -3,7 +3,7 @@ import easyocr
 import numpy as np
 from ocr import recognize_numbers
 
-#from ocr_functionsv5 import treatment
+from ocr_functionsv5 import treatment
 
 def read_dir(inpath):
     """reads directory and return list
